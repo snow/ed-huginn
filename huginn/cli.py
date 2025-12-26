@@ -158,6 +158,24 @@ def update_siriuscorp():
     return 0 if success else 1
 
 
+@register_menu("Update EDTools data", "edtools", visible=_has_pledged_power)
+def update_edtools():
+    """Query EDTools for massacre mission targets and mark candidates."""
+    from huginn.services.edtools import update_from_edtools
+
+    success = update_from_edtools()
+    return 0 if success else 1
+
+
+@register_menu("Update INARA massacre data", "massacre", visible=_has_pledged_power)
+def update_inara_massacre():
+    """Query INARA for massacre mission targets and mark candidates."""
+    from huginn.services.inara_massacre import update_from_inara_massacre
+
+    success = update_from_inara_massacre()
+    return 0 if success else 1
+
+
 @register_menu("List candidates", "candidates", enabled=False)
 def candidates():
     """List candidate systems for AFK bounty hunting."""

@@ -29,16 +29,11 @@ make prepare
 # Activate the environment
 source .venv/bin/activate
 ```
+### TODO
 
-### Manual Setup
-
-If you prefer not to use Make:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate  # Linux/macOS (.venv\Scripts\activate on Windows)
-pip install -r requirements.txt
-```
+- deploy, mount
+- update spansh dump
+- cache edtools / inara massacre
 
 ### Running the CLI
 

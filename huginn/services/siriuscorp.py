@@ -10,91 +10,16 @@ from bs4 import BeautifulSoup
 from rich.console import Console
 
 from huginn.config import get_pledged_power, SIRIUSCORP_BOUNTY_QUERY_RADIUS_LY
+from huginn.services.utils import (
+    DB_URL,
+    USER_AGENT,
+    QUERY_DELAY_SECONDS,
+    find_reference_systems,
+)
 
-DB_URL = "postgresql://huginn:huginn@localhost:5432/huginn"
-USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 SIRIUSCORP_URL = "https://siriuscorp.cc/bounty/"
-QUERY_DELAY_SECONDS = 10
 
 console = Console()
-
-
-def _find_reference_systems(conn, radius_ly: float = SIRIUSCORP_BOUNTY_QUERY_RADIUS_LY) -> list[dict]:
-    """Find minimum reference systems to cover all Expansion systems with rings.
-
-    Uses greedy Set Cover algorithm:
-    1. Find the system that covers the most uncovered systems
-    2. Mark all systems within radius as covered
-    3. Repeat until all systems are covered
-
-    Args:
-        conn: Database connection
-        radius_ly: Query radius in light-years
-
-    Returns:
-        List of reference systems with coverage info
-    """
-    with conn.cursor() as cur:
-        # Get all Expansion systems with rings (potential RES sites)
-        cur.execute("""
-            SELECT id64, name, x, y, z
-            FROM systems
-            WHERE power_state = 'Expansion' AND has_ring = TRUE
-        """)
-        expansion_systems = {row[0]: {"name": row[1], "x": row[2], "y": row[3], "z": row[4]}
-                            for row in cur.fetchall()}
-
-    if not expansion_systems:
-        return []
-
-    uncovered = set(expansion_systems.keys())
-    reference_systems = []
-
-    while uncovered:
-        best_id = None
-        best_covers = set()
-
-        # Find the system that covers the most uncovered systems
-        for sys_id in uncovered:
-            sys = expansion_systems[sys_id]
-
-            # Find all uncovered systems within radius using SQL
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id64
-                    FROM systems
-                    WHERE power_state = 'Expansion'
-                      AND has_ring = TRUE
-                      AND id64 = ANY(%s)
-                      AND ST_3DDWithin(
-                          coords,
-                          ST_MakePoint(%s, %s, %s),
-                          %s
-                      )
-                """, (list(uncovered), sys["x"], sys["y"], sys["z"], radius_ly))
-                covers = {row[0] for row in cur.fetchall()}
-
-            if len(covers) > len(best_covers):
-                best_id = sys_id
-                best_covers = covers
-
-        if best_id is None:
-            break
-
-        # Add this system as a reference point
-        reference_systems.append({
-            "id64": best_id,
-            "name": expansion_systems[best_id]["name"],
-            "x": expansion_systems[best_id]["x"],
-            "y": expansion_systems[best_id]["y"],
-            "z": expansion_systems[best_id]["z"],
-            "covers": len(best_covers),
-        })
-
-        # Remove covered systems
-        uncovered -= best_covers
-
-    return reference_systems
 
 
 def _fetch_siriuscorp(system_name: str, radius_ly: float) -> str | None:
@@ -237,7 +162,7 @@ def update_from_siriuscorp() -> bool:
 
             # Calculate reference systems
             console.print("[cyan]Calculating minimum reference systems...[/cyan]")
-            reference_systems = _find_reference_systems(conn, SIRIUSCORP_BOUNTY_QUERY_RADIUS_LY)
+            reference_systems = find_reference_systems(conn, SIRIUSCORP_BOUNTY_QUERY_RADIUS_LY)
             console.print(f"[green]Need {len(reference_systems)} queries[/green]")
             console.print()
 
@@ -316,7 +241,7 @@ def plan_siriuscorp_queries() -> bool:
             console.print("[dim]This may take a moment...[/dim]")
             console.print()
 
-            reference_systems = _find_reference_systems(conn, SIRIUSCORP_BOUNTY_QUERY_RADIUS_LY)
+            reference_systems = find_reference_systems(conn, SIRIUSCORP_BOUNTY_QUERY_RADIUS_LY)
 
             console.print(f"[green]Found {len(reference_systems)} reference systems[/green]")
             console.print(f"[dim]Coverage efficiency: {total_expansion / len(reference_systems):.1f} systems per query[/dim]")
