@@ -1,0 +1,28 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Data files (large dumps)
+data/*.gz
+data/*.json
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+.claude/settings.local.json
+
+# Private context (not for repo)
+docs/PRIVATE_CONTEXT.md
