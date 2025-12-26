@@ -6,4 +6,4 @@ requests>=2.31.0         # HTTP client
 ijson>=3.2.0             # Streaming JSON parser
 pydantic>=2.0.0          # Data validation
 python-dotenv>=1.0.0     # .env file support
-simple-term-menu>=1.6.0  # Interactive arrow-key menu
+questionary>=2.0.0        # Interactive prompts

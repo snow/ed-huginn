@@ -1,13 +1,13 @@
 """Shared utilities for Huginn services."""
 
-from huginn.config import SIRIUSCORP_BOUNTY_QUERY_RADIUS_LY
+from huginn.config import CANDIDACY_QUERY_RADIUS_LY
 
 DB_URL = "postgresql://huginn:huginn@localhost:5432/huginn"
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 QUERY_DELAY_SECONDS = 10
 
 
-def find_reference_systems(conn, radius_ly: float = SIRIUSCORP_BOUNTY_QUERY_RADIUS_LY) -> list[dict]:
+def find_reference_systems(conn, radius_ly: float = CANDIDACY_QUERY_RADIUS_LY) -> list[dict]:
     """Find minimum reference systems to cover all Expansion systems with rings.
 
     Uses greedy Set Cover algorithm:

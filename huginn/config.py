@@ -6,8 +6,12 @@ from pathlib import Path
 DATA_DIR = Path(__file__).parent.parent / "data"
 CONFIG_FILE = DATA_DIR / "config.json"
 
-# Siriuscorp query radius for bounty hunting systems (in light-years)
-SIRIUSCORP_BOUNTY_QUERY_RADIUS_LY = 50.0
+# Query radius for INARA/EDTools candidacy check (in light-years)
+CANDIDACY_QUERY_RADIUS_LY = 50
+
+# Siriuscorp query radius for RES data (in light-years)
+# Smaller radius since we only query for confirmed candidates
+SIRIUSCORP_BOUNTY_QUERY_RADIUS_LY = 5
 
 # Power name -> INARA ID mapping
 # URL pattern: https://inara.cz/elite/power-controlled/{id}/
