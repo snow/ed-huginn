@@ -3,7 +3,6 @@
 import sys
 
 from rich.console import Console
-from rich.panel import Panel
 from simple_term_menu import TerminalMenu
 
 console = Console()
@@ -176,21 +175,127 @@ def update_inara_massacre():
     return 0 if success else 1
 
 
-@register_menu("List candidates", "candidates", enabled=False)
+def _get_last_thursday_tick():
+    """Get the datetime of the last Thursday tick (07:00 UTC)."""
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    # Thursday is weekday 3
+    days_since_thursday = (now.weekday() - 3) % 7
+    last_thursday = now - timedelta(days=days_since_thursday)
+    # Set to 07:00 UTC (tick time)
+    tick_time = last_thursday.replace(hour=7, minute=0, second=0, microsecond=0)
+    # If we're before Thursday 07:00 this week, go back another week
+    if tick_time > now:
+        tick_time -= timedelta(days=7)
+    return tick_time
+
+
+@register_menu("List candidates", "candidates", visible=_has_pledged_power)
 def candidates():
     """List candidate systems for AFK bounty hunting."""
-    console.print(
-        Panel(
-            "[dim]This feature is under development.[/dim]\n\n"
-            "Will list systems matching:\n"
-            "• Unoccupied powerplay state\n"
-            "• Within range of controlled space\n"
-            "• Has RES sites (Low/Normal/High)\n"
-            "• Inhabited (has stations)",
-            title="[bold yellow]WIP[/bold yellow] List Candidates",
+    import subprocess
+    import urllib.parse
+    from datetime import timezone
+
+    import psycopg
+
+    from huginn.services.utils import DB_URL
+
+    try:
+        with psycopg.connect(DB_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT name, power_state, has_high_res, has_med_res, has_low_res, inara_updated_at
+                    FROM systems
+                    WHERE is_candidate = TRUE
+                    ORDER BY inara_updated_at DESC NULLS LAST
+                """)
+                rows = cur.fetchall()
+
+        if not rows:
+            console.print("[yellow]No candidate systems found.[/yellow]")
+            console.print("[dim]Run the scrapers first to find candidates.[/dim]")
+            return 0
+
+        last_tick = _get_last_thursday_tick()
+
+        # Build menu entries and INARA URLs
+        menu_entries = []
+        inara_urls = []
+        for name, power_state, has_high, has_med, has_low, inara_updated_at in rows:
+            encoded_name = urllib.parse.quote(name)
+            inara_url = f"https://inara.cz/elite/nearest-misc/?ps1={encoded_name}&pi20=9"
+            inara_urls.append(inara_url)
+
+            # RES info: HML, -M-, --L, ---
+            res_str = f"{'H' if has_high else '-'}{'M' if has_med else '-'}{'L' if has_low else '-'}"
+
+            # Format timestamp as "Dec 27 01:28"
+            if inara_updated_at:
+                ts_str = inara_updated_at.strftime("%b %d %H:%M")
+                # Check if older than last tick
+                ts_aware = inara_updated_at.replace(tzinfo=timezone.utc) if inara_updated_at.tzinfo is None else inara_updated_at
+                is_stale = ts_aware < last_tick
+            else:
+                ts_str = "N/A"
+                is_stale = True
+
+            entry = f"{name:<30} {power_state:<12} {res_str}  {ts_str}"
+            # Grey out stale entries
+            if is_stale:
+                entry = f"[dim]{entry}"
+            menu_entries.append(entry)
+
+        menu_entries.append("Back")
+
+        console.print(f"[cyan]Found {len(rows)} candidate systems[/cyan]")
+        console.print("[dim]Press Enter to copy INARA massacre link to clipboard[/dim]")
+        console.print()
+
+        menu = TerminalMenu(
+            menu_entries,
+            title="Candidate Systems (Enter to copy INARA link):\n",
+            menu_cursor_style=("fg_cyan", "bold"),
+            menu_highlight_style=("bg_cyan", "fg_black"),
+            cycle_cursor=True,
+            clear_screen=False,
         )
-    )
-    return 1
+
+        while True:
+            choice = menu.show()
+
+            if choice is None or choice == len(inara_urls):
+                return 0
+
+            selected_url = inara_urls[choice]
+
+            # Copy INARA URL to clipboard using pbcopy (macOS) or xclip (Linux)
+            try:
+                subprocess.run(
+                    ["pbcopy"],
+                    input=selected_url.encode(),
+                    check=True,
+                )
+                console.print(f"[green]Copied:[/green] {selected_url}")
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                # Fallback for Linux
+                try:
+                    subprocess.run(
+                        ["xclip", "-selection", "clipboard"],
+                        input=selected_url.encode(),
+                        check=True,
+                    )
+                    console.print(f"[green]Copied:[/green] {selected_url}")
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    console.print(f"[yellow]Could not copy to clipboard.[/yellow]")
+                    console.print(f"URL: {selected_url}")
+
+    except psycopg.Error as e:
+        console.print(f"[red]Database error:[/red] {e}")
+        return 1
+
+    return 0
 
 
 def main():
