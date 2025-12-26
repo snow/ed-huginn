@@ -25,8 +25,9 @@ CREATE TABLE systems (
 
     spansh_updated_at TIMESTAMPTZ,
     inara_updated_at TIMESTAMPTZ,
-    siriuscorp_updated_at TIMESTAMPTZ,
     candidacy_checked_at TIMESTAMPTZ,
+
+    metadata JSONB DEFAULT '{}'::JSONB,
 
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()

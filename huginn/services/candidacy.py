@@ -81,10 +81,79 @@ def _clean_system_name(name: str) -> str:
     return re.sub(r'^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$', '', name)
 
 
+def _fetch_inara_system(url: str) -> str | None:
+    """Fetch INARA system detail page."""
+    try:
+        response = requests.get(
+            url,
+            headers={"User-Agent": USER_AGENT},
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.text
+    except requests.RequestException as e:
+        console.print(f"[red]INARA system fetch failed:[/red] {e}")
+        return None
+
+
+def _parse_inara_system_factions(html: str) -> int:
+    """Parse INARA system page and count factions NOT in War/Civil war/Elections.
+
+    These states prevent factions from giving pirate massacre missions.
+    Returns count of "peaceful" factions (those that can give massacre missions).
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Find the faction table (has headers: Faction, Government, Allegiance, Pending, Active, Inf)
+    tables = soup.find_all("table", class_="tablesorter")
+    for table in tables:
+        thead = table.find("thead")
+        if not thead:
+            continue
+        headers = [th.get_text(strip=True).lower() for th in thead.find_all("th")]
+        if "faction" not in headers or "active" not in headers:
+            continue
+
+        # Found the faction table
+        tbody = table.find("tbody")
+        if not tbody:
+            return 0
+
+        peaceful_count = 0
+        rows = tbody.find_all("tr")
+        for row in rows:
+            cells = row.find_all("td")
+            if len(cells) < 5:
+                continue
+
+            # Active states column (index 4)
+            active_cell = cells[4]
+            state_tags = active_cell.find_all("span", class_=lambda c: c and "statetag" in c)
+            states = [tag.get_text(strip=True).lower() for tag in state_tags]
+
+            # Check if faction is in war/civil war/elections
+            is_blocked = any(
+                s in ("war", "civil war", "elections")
+                for s in states
+            )
+
+            if not is_blocked:
+                peaceful_count += 1
+
+        return peaceful_count
+
+    return 0
+
+
 def _parse_inara_massacre_results(html: str) -> dict[str, dict]:
     """Parse INARA massacre results.
 
-    Returns dict of {system_name: {"has_high_res": bool, "has_low_res": bool, "has_haz_res": bool}}.
+    Returns dict of {system_name: {
+        "has_high_res": bool,
+        "has_low_res": bool,
+        "has_haz_res": bool,
+        "sources": {source_name: source_url, ...}
+    }}.
     """
     soup = BeautifulSoup(html, "html.parser")
     table = soup.find("table", class_="tablesortercollapsed")
@@ -102,11 +171,23 @@ def _parse_inara_massacre_results(html: str) -> dict[str, dict]:
         if len(cells) < 6:
             continue
 
+        # Cell 0: SOURCE STAR SYSTEM - contains links to source systems
+        source_cell = cells[0]
+        source_links = source_cell.find_all("a", href=lambda h: h and "/starsystem/" in h)
+        sources = {}
+        for link in source_links:
+            src_name = _clean_system_name(link.get_text(strip=True))
+            src_href = link.get("href", "")
+            if src_name and src_href:
+                # Build full URL from relative href like /elite/starsystem/1728/
+                sources[src_name] = f"https://inara.cz{src_href}"
+
+        # Cell 4: TARGET system
         system_cell = cells[4]
         system_link = system_cell.find("a", href=lambda h: h and "/starsystem/" in h)
         if system_link:
             system_name = _clean_system_name(system_link.get_text(strip=True))
-            if not system_name:
+            if not system_name or system_name in target_systems:
                 continue
 
             tags = system_cell.find_all("span", class_="tag")
@@ -116,16 +197,12 @@ def _parse_inara_massacre_results(html: str) -> dict[str, dict]:
             has_low_res = any("low res" in t for t in tag_texts)
             has_haz_res = any("haz res" in t for t in tag_texts)
 
-            if system_name in target_systems:
-                target_systems[system_name]["has_high_res"] |= has_high_res
-                target_systems[system_name]["has_low_res"] |= has_low_res
-                target_systems[system_name]["has_haz_res"] |= has_haz_res
-            else:
-                target_systems[system_name] = {
-                    "has_high_res": has_high_res,
-                    "has_low_res": has_low_res,
-                    "has_haz_res": has_haz_res,
-                }
+            target_systems[system_name] = {
+                "has_high_res": has_high_res,
+                "has_low_res": has_low_res,
+                "has_haz_res": has_haz_res,
+                "sources": sources,
+            }
 
     return target_systems
 
@@ -156,7 +233,7 @@ def _parse_edtools_results(html: str) -> dict[str, dict]:
             continue
 
         system_name = edsm_link.get_text(strip=True)
-        if not system_name:
+        if not system_name or system_name in target_systems:
             continue
 
         # RES info is in column 11 (index 10)
@@ -169,18 +246,12 @@ def _parse_edtools_results(html: str) -> dict[str, dict]:
         has_low_res = "low" in res_text
         has_haz_res = "haz" in res_text
 
-        if system_name in target_systems:
-            target_systems[system_name]["has_high_res"] |= has_high_res
-            target_systems[system_name]["has_med_res"] |= has_med_res
-            target_systems[system_name]["has_low_res"] |= has_low_res
-            target_systems[system_name]["has_haz_res"] |= has_haz_res
-        else:
-            target_systems[system_name] = {
-                "has_high_res": has_high_res,
-                "has_med_res": has_med_res,
-                "has_low_res": has_low_res,
-                "has_haz_res": has_haz_res,
-            }
+        target_systems[system_name] = {
+            "has_high_res": has_high_res,
+            "has_med_res": has_med_res,
+            "has_low_res": has_low_res,
+            "has_haz_res": has_haz_res,
+        }
 
     return target_systems
 
@@ -229,7 +300,7 @@ def _reset_non_contest_candidates(conn) -> int:
         cur.execute("""
             UPDATE systems
             SET is_candidate = FALSE, updated_at = NOW()
-            WHERE power_state != 'Contest'
+            WHERE power_state != 'Contested'
               AND is_candidate = TRUE
             RETURNING id64
         """)
@@ -383,6 +454,7 @@ def update_candidacy() -> bool:
             console.print("[cyan]Step 5:[/cyan] Marking candidates...")
 
             # Merge pools - EDTools now has RES info too
+            # Keep sources from INARA pool for faction counting
             combined_pool: dict[str, dict] = {}
             for name, res_info in inara_pool.items():
                 combined_pool[name] = {
@@ -390,6 +462,7 @@ def update_candidacy() -> bool:
                     "has_med_res": False,  # INARA doesn't have med
                     "has_low_res": res_info.get("has_low_res", False),
                     "has_haz_res": res_info.get("has_haz_res", False),
+                    "sources": res_info.get("sources", {}),
                 }
             for name, res_info in edtools_pool.items():
                 if name in combined_pool:
@@ -398,15 +471,92 @@ def update_candidacy() -> bool:
                     combined_pool[name]["has_low_res"] |= res_info.get("has_low_res", False)
                     combined_pool[name]["has_haz_res"] |= res_info.get("has_haz_res", False)
                 else:
-                    combined_pool[name] = res_info.copy()
+                    # EDTools doesn't have source info
+                    combined_pool[name] = {
+                        "has_high_res": res_info.get("has_high_res", False),
+                        "has_med_res": res_info.get("has_med_res", False),
+                        "has_low_res": res_info.get("has_low_res", False),
+                        "has_haz_res": res_info.get("has_haz_res", False),
+                        "sources": {},
+                    }
 
             marked = _mark_candidates_with_res(conn, combined_pool)
             conn.commit()
             console.print(f"  [green]Marked {marked} systems as candidates[/green]")
             console.print()
 
-            # Step 6: Query Siriuscorp for RES data
-            console.print("[cyan]Step 6:[/cyan] Querying Siriuscorp for RES data...")
+            # Step 6: Fetch source system faction counts
+            console.print("[cyan]Step 6:[/cyan] Counting peaceful factions in source systems...")
+
+            # Get candidates that have sources
+            candidates_with_sources = []
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT name FROM systems
+                    WHERE power_state = 'Expansion' AND is_candidate = TRUE
+                """)
+                for (cand_name,) in cur.fetchall():
+                    if cand_name in combined_pool and combined_pool[cand_name].get("sources"):
+                        candidates_with_sources.append(
+                            (cand_name, combined_pool[cand_name]["sources"])
+                        )
+
+            if not candidates_with_sources:
+                console.print("  [dim]No candidates with source systems[/dim]")
+            else:
+                console.print(f"  [dim]Processing {len(candidates_with_sources)} candidates[/dim]")
+
+                # Cache: URL -> peaceful faction count (avoid refetching same source)
+                source_cache: dict[str, int] = {}
+
+                for cand_name, sources in candidates_with_sources:
+                    faction_counts = []
+
+                    for src_name, src_url in sources.items():
+                        if src_url in source_cache:
+                            count = source_cache[src_url]
+                        else:
+                            console.print(f"    [dim]Fetching {src_name}...[/dim]")
+                            time.sleep(QUERY_DELAY_SECONDS)
+                            html = _fetch_inara_system(src_url)
+                            if html:
+                                count = _parse_inara_system_factions(html)
+                            else:
+                                count = 0
+                            source_cache[src_url] = count
+
+                        faction_counts.append(count)
+
+                    # Build faction string: "5+4+3+2=14" (sorted descending)
+                    if faction_counts:
+                        faction_counts.sort(reverse=True)
+                        total = sum(faction_counts)
+                        faction_str = "+".join(str(c) for c in faction_counts) + f"={total}"
+
+                        # Update metadata
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """
+                                UPDATE systems
+                                SET metadata = jsonb_set(
+                                    COALESCE(metadata, '{}'::jsonb),
+                                    '{source_factions}',
+                                    %s::jsonb
+                                ),
+                                updated_at = NOW()
+                                WHERE name = %s
+                                """,
+                                (f'"{faction_str}"', cand_name),
+                            )
+                        conn.commit()
+                        console.print(f"  {cand_name}: {faction_str}")
+
+                console.print(f"  [dim]Cached {len(source_cache)} source systems[/dim]")
+
+            console.print()
+
+            # Step 7: Query Siriuscorp for RES data
+            console.print("[cyan]Step 7:[/cyan] Querying Siriuscorp for RES data...")
 
             # Get all candidates
             with conn.cursor() as cur:

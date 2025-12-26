@@ -178,7 +178,8 @@ def candidates():
         with psycopg.connect(DB_URL) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT name, power_state, has_high_res, has_med_res, has_low_res, inara_updated_at
+                    SELECT name, power_state, has_high_res, has_med_res, has_low_res,
+                           inara_updated_at, metadata
                     FROM systems
                     WHERE is_candidate = TRUE
                     ORDER BY inara_updated_at DESC NULLS LAST
@@ -195,12 +196,18 @@ def candidates():
         # Build menu entries and URL mapping
         choices = []
         url_map = {}
-        for name, power_state, has_high, has_med, has_low, inara_updated_at in rows:
+        for name, power_state, has_high, has_med, has_low, inara_updated_at, metadata in rows:
             encoded_name = urllib.parse.quote(name)
             inara_url = f"https://inara.cz/elite/nearest-misc/?ps1={encoded_name}&pi20=9"
 
             # RES info: HML, -M-, --L, ---
             res_str = f"{'H' if has_high else '-'}{'M' if has_med else '-'}{'L' if has_low else '-'}"
+
+            # Source factions string (e.g., "5+4+3=12")
+            factions_str = ""
+            if metadata and isinstance(metadata, dict):
+                factions_str = metadata.get("source_factions", "")
+            factions_display = f" [{factions_str}]" if factions_str else ""
 
             # Format timestamp as "Dec 27 01:28"
             if inara_updated_at:
@@ -213,7 +220,7 @@ def candidates():
 
             # Mark stale entries with * prefix
             stale_marker = "  " if not is_stale else "* "
-            entry = f"{stale_marker}{name:<30} {power_state:<12} {res_str}  {ts_str}"
+            entry = f"{stale_marker}{name:<30} {power_state:<12} {res_str} {factions_display:<16} {ts_str}"
             choices.append(entry)
             url_map[entry] = inara_url
 
