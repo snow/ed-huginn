@@ -124,10 +124,19 @@ def check_history():
 
 @register_menu("Update candidates", "check", visible=_has_pledged_power)
 def update_candidates():
-    """Run consolidated candidacy check (INARA massacre + EDTools + Siriuscorp)."""
+    """Run consolidated candidacy check (INARA massacre + EDTools)."""
     from huginn.services.candidacy import update_candidacy
 
     success = update_candidacy()
+    return 0 if success else 1
+
+
+@register_menu("Update candidate RES from Siriuscorp", "siriuscorp", visible=_has_pledged_power)
+def update_siriuscorp():
+    """Query Siriuscorp for RES data on candidate systems."""
+    from huginn.services.siriuscorp import update_res_from_siriuscorp
+
+    success = update_res_from_siriuscorp()
     return 0 if success else 1
 
 
