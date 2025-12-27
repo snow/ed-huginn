@@ -140,8 +140,8 @@ def update_from_history() -> bool:
     try:
         with psycopg.connect(DB_URL) as conn:
             updated = 0
-            not_found = 0
             skipped = 0
+            not_found_names = []
 
             for t in transitions:
                 with conn.cursor() as cur:
@@ -152,7 +152,7 @@ def update_from_history() -> bool:
                     row = cur.fetchone()
 
                 if not row:
-                    not_found += 1
+                    not_found_names.append(t["name"])
                     continue
 
                 db_id64, db_updated = row
@@ -186,7 +186,10 @@ def update_from_history() -> bool:
             conn.commit()
 
             console.print()
-            console.print(f"Updated: {updated}, Skipped: {skipped}, Not in DB: {not_found}")
+            console.print(f"Updated: {updated}, Skipped: {skipped}, Not in DB: {len(not_found_names)}")
+            if not_found_names:
+                for name in not_found_names:
+                    console.print(f"  [dim]{name}[/dim]")
             console.print("[green]Done![/green]")
             return True
 

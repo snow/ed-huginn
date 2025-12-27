@@ -103,11 +103,11 @@ def _update_systems(
             - "true_if_contested": set TRUE only if state is "Contested"
 
     Returns:
-        Tuple of (updated, skipped, not_found) counts
+        Tuple of (updated, skipped, not_found_names) where not_found_names is a list
     """
     updated = 0
-    not_found = 0
     skipped = 0
+    not_found_names = []
 
     with Progress(
         SpinnerColumn(),
@@ -128,7 +128,7 @@ def _update_systems(
                 row = cur.fetchone()
 
             if not row:
-                not_found += 1
+                not_found_names.append(system["name"])
                 progress.update(task, advance=1)
                 continue
 
@@ -168,7 +168,7 @@ def _update_systems(
             updated += 1
             progress.update(task, advance=1)
 
-    return updated, skipped, not_found
+    return updated, skipped, not_found_names
 
 
 def update_from_inara() -> bool:
@@ -208,11 +208,14 @@ def update_from_inara() -> bool:
                 console.print()
 
                 if systems:
-                    updated, skipped, not_found = _update_systems(
+                    updated, skipped, not_found_names = _update_systems(
                         conn, systems, power, f"{label}...", candidate_rule
                     )
                     conn.commit()
-                    console.print(f"  Updated: {updated}, Skipped: {skipped}, Not in DB: {not_found}")
+                    console.print(f"  Updated: {updated}, Skipped: {skipped}, Not in DB: {len(not_found_names)}")
+                    if not_found_names:
+                        for name in not_found_names:
+                            console.print(f"    [dim]{name}[/dim]")
                     console.print()
 
             console.print("[green]Done![/green]")
