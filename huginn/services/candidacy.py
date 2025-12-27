@@ -1,5 +1,6 @@
 """Candidacy check service - consolidated scraper for candidate systems."""
 
+import json
 import re
 import time
 from datetime import datetime, timezone
@@ -23,8 +24,29 @@ from huginn.services.utils import (
 
 INARA_MASSACRE_URL = "https://inara.cz/elite/nearest-misc/"
 EDTOOLS_URL = "https://edtools.cc/pve"
+ELITEBGS_TICKS_URL = "https://elitebgs.app/api/ebgs/v5/ticks"
 
 console = Console()
+
+
+def _fetch_latest_tick() -> datetime | None:
+    """Fetch the latest BGS tick time from EliteBGS API."""
+    try:
+        response = requests.get(
+            ELITEBGS_TICKS_URL,
+            headers={"User-Agent": USER_AGENT},
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+        # Response is a single object or array with one item
+        if isinstance(data, list) and data:
+            data = data[0]
+        if isinstance(data, dict) and "time" in data:
+            return datetime.fromisoformat(data["time"].replace("Z", "+00:00"))
+    except (requests.RequestException, ValueError, KeyError) as e:
+        console.print(f"[yellow]Failed to fetch BGS tick:[/yellow] {e}")
+    return None
 
 
 def _fetch_inara_massacre(system_name: str) -> str | None:
@@ -74,13 +96,37 @@ def _fetch_inara_system(url: str) -> str | None:
         return None
 
 
-def _parse_inara_system_factions(html: str) -> int:
-    """Parse INARA system page and count factions NOT in War/Civil war/Elections.
+def _parse_inara_system_factions(html: str) -> dict:
+    """Parse INARA system page for faction info and factions updated timestamp.
 
-    These states prevent factions from giving pirate massacre missions.
-    Returns count of "peaceful" factions (those that can give massacre missions).
+    Returns dict with:
+        - factions: list of {name, state} dicts
+        - factions_updated_at: datetime or None
     """
     soup = BeautifulSoup(html, "html.parser")
+
+    result = {
+        "factions": [],
+        "factions_updated_at": None,
+    }
+
+    # Parse "Factions updated" timestamp from itempair divs
+    # Format: "25 Dec 2025, 8:41pm"
+    item_pairs = soup.find_all("div", class_="itempaircontainer")
+    for pair in item_pairs:
+        label = pair.find("div", class_="itempairlabel")
+        value = pair.find("div", class_="itempairvalue")
+        if label and value:
+            label_text = label.get_text(strip=True)
+            if "Factions updated" in label_text:
+                ts_text = value.get_text(strip=True)
+                try:
+                    result["factions_updated_at"] = datetime.strptime(
+                        ts_text, "%d %b %Y, %I:%M%p"
+                    ).replace(tzinfo=timezone.utc)
+                except ValueError:
+                    pass
+                break
 
     # Find the faction table (has headers: Faction, Government, Allegiance, Pending, Active, Inf)
     tables = soup.find_all("table", class_="tablesorter")
@@ -95,32 +141,48 @@ def _parse_inara_system_factions(html: str) -> int:
         # Found the faction table
         tbody = table.find("tbody")
         if not tbody:
-            return 0
+            return result
 
-        peaceful_count = 0
+        factions = []
         rows = tbody.find_all("tr")
         for row in rows:
             cells = row.find_all("td")
             if len(cells) < 5:
                 continue
 
+            # Faction name (column 0)
+            faction_link = cells[0].find("a")
+            faction_name = faction_link.get_text(strip=True) if faction_link else cells[0].get_text(strip=True)
+
             # Active states column (index 4)
             active_cell = cells[4]
             state_tags = active_cell.find_all("span", class_=lambda c: c and "statetag" in c)
-            states = [tag.get_text(strip=True).lower() for tag in state_tags]
+            states = [tag.get_text(strip=True) for tag in state_tags]
+            state_str = ", ".join(states) if states else "None"
 
-            # Check if faction is in war/civil war/elections
-            is_blocked = any(
-                s in ("war", "civil war", "elections")
-                for s in states
-            )
+            factions.append({
+                "name": faction_name,
+                "state": state_str,
+            })
 
-            if not is_blocked:
-                peaceful_count += 1
+        result["factions"] = factions
+        return result
 
-        return peaceful_count
+    return result
 
-    return 0
+
+def _count_peaceful_factions(factions: list[dict]) -> int:
+    """Count factions NOT in War/Civil war/Elections.
+
+    These states prevent factions from giving pirate massacre missions.
+    """
+    blocked_states = {"war", "civil war", "elections"}
+    count = 0
+    for f in factions:
+        states = [s.strip().lower() for s in f.get("state", "").split(",")]
+        if not any(s in blocked_states for s in states):
+            count += 1
+    return count
 
 
 def _parse_inara_massacre_results(html: str) -> dict[str, dict]:
@@ -232,6 +294,35 @@ def _parse_edtools_results(html: str) -> dict[str, dict]:
         }
 
     return target_systems
+
+
+def _save_faction_info(conn, system_name: str, faction_info: dict) -> None:
+    """Save faction info to a system's metadata and update inara_factions_updated_at.
+
+    Args:
+        conn: Database connection
+        system_name: Name of the system
+        faction_info: Dict with factions list and factions_updated_at
+    """
+    factions = faction_info.get("factions", [])
+    factions_updated_at = faction_info.get("factions_updated_at")
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE systems
+            SET data = jsonb_set(
+                COALESCE(data, '{}'::jsonb),
+                '{factions}',
+                %s::jsonb
+            ),
+            inara_factions_updated_at = %s,
+            updated_at = NOW()
+            WHERE name = %s
+            """,
+            (json.dumps(factions), factions_updated_at, system_name),
+        )
+    conn.commit()
 
 
 def _reset_non_contest_candidates(conn) -> int:
@@ -430,6 +521,13 @@ def update_candidacy() -> bool:
             # Step 6: Fetch source system faction counts
             console.print("[cyan]Step 6:[/cyan] Counting peaceful factions in source systems...")
 
+            # Fetch latest BGS tick to check data freshness
+            latest_tick = _fetch_latest_tick()
+            if latest_tick:
+                console.print(f"  [dim]Latest BGS tick: {latest_tick.strftime('%Y-%m-%d %H:%M')} UTC[/dim]")
+            else:
+                console.print("  [yellow]Could not fetch BGS tick, will refresh all faction data[/yellow]")
+
             # Get candidates that have sources
             candidates_with_sources = []
             with conn.cursor() as cur:
@@ -448,26 +546,54 @@ def update_candidacy() -> bool:
             else:
                 console.print(f"  [dim]Processing {len(candidates_with_sources)} candidates[/dim]")
 
-                # Cache: URL -> peaceful faction count (avoid refetching same source)
-                source_cache: dict[str, int] = {}
+                # Cache: URL -> faction info (avoid refetching same source)
+                source_cache: dict[str, dict] = {}
 
                 for cand_name, sources in candidates_with_sources:
                     faction_counts = []
 
                     for src_name, src_url in sources.items():
                         if src_url in source_cache:
-                            count = source_cache[src_url]
+                            faction_info = source_cache[src_url]
                         else:
-                            console.print(f"    [dim]Fetching {src_name}...[/dim]")
-                            time.sleep(QUERY_DELAY_SECONDS)
-                            html = _fetch_inara_system(src_url)
-                            if html:
-                                count = _parse_inara_system_factions(html)
-                            else:
-                                count = 0
-                            source_cache[src_url] = count
+                            # Check if DB has fresh data (updated after last tick)
+                            faction_info = None
+                            if latest_tick:
+                                with conn.cursor() as cur:
+                                    cur.execute(
+                                        """
+                                        SELECT data->'factions', inara_factions_updated_at
+                                        FROM systems WHERE name = %s
+                                        """,
+                                        (src_name,),
+                                    )
+                                    row = cur.fetchone()
+                                    if row and row[1]:
+                                        db_updated = row[1]
+                                        if db_updated.tzinfo is None:
+                                            db_updated = db_updated.replace(tzinfo=timezone.utc)
+                                        if db_updated > latest_tick and row[0]:
+                                            # DB data is fresh, use it
+                                            faction_info = {
+                                                "factions": row[0],
+                                                "factions_updated_at": db_updated,
+                                            }
+                                            console.print(f"    [dim]{src_name} (cached)[/dim]")
 
-                        faction_counts.append(count)
+                            if faction_info is None:
+                                console.print(f"    [dim]Fetching {src_name}...[/dim]")
+                                time.sleep(QUERY_DELAY_SECONDS)
+                                html = _fetch_inara_system(src_url)
+                                if html:
+                                    faction_info = _parse_inara_system_factions(html)
+                                    # Save faction info to source system
+                                    _save_faction_info(conn, src_name, faction_info)
+                                else:
+                                    faction_info = {"factions": [], "factions_updated_at": None}
+
+                            source_cache[src_url] = faction_info
+
+                        faction_counts.append(_count_peaceful_factions(faction_info["factions"]))
 
                     # Build faction string: "5+4+3+2=14" (sorted descending)
                     if faction_counts:

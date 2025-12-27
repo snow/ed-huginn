@@ -25,9 +25,11 @@ CREATE TABLE systems (
 
     spansh_updated_at TIMESTAMPTZ,
     inara_info_updated_at TIMESTAMPTZ,
+    inara_factions_updated_at TIMESTAMPTZ,
     candidacy_checked_at TIMESTAMPTZ,
 
     metadata JSONB DEFAULT '{}'::JSONB,
+    data JSONB DEFAULT '{}'::JSONB,
 
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
