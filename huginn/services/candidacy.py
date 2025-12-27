@@ -358,6 +358,8 @@ def _mark_candidates_with_res(conn, target_systems: dict[str, dict]) -> int:
         for name, res_info in target_systems.items():
             set_parts = ["is_candidate = TRUE", "updated_at = NOW()"]
 
+            # Only turn false to true, not the opposite. Resource info is loose—
+            # we query multiple sources and store "true" if any source reports it.
             if res_info.get("has_high_res"):
                 set_parts.append("has_high_res = TRUE")
             if res_info.get("has_med_res"):
