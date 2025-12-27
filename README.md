@@ -43,6 +43,12 @@ The scheduler runs `incremental-update` hourly as a subprocess.
 docker logs -f huginn-scheduler
 ```
 
+### Update only the python container
+
+```bash
+docker compose up -d --build scheduler
+```
+
 ## TODO
 
 - There are missing systems in galaxy_stations.json.gz and galaxy_populated.json.gz
