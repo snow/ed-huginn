@@ -104,12 +104,21 @@ def _has_pledged_power() -> bool:
     return get_pledged_power() is not None
 
 
-@register_menu("Update INARA data", "inara", visible=_has_pledged_power)
+@register_menu("Fetch power systems from INARA", "inara", visible=_has_pledged_power)
 def update_inara():
     """Fetch contested systems from INARA and update database."""
-    from huginn.services.inara import update_from_inara
+    from huginn.services.inara_power_systems import update_from_inara
 
     success = update_from_inara()
+    return 0 if success else 1
+
+
+@register_menu("Update power history from INARA", "history", visible=_has_pledged_power)
+def check_history():
+    """Check power history for systems that changed state."""
+    from huginn.services.inara_power_history import update_from_history
+
+    success = update_from_history()
     return 0 if success else 1
 
 

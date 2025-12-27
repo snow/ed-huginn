@@ -34,6 +34,15 @@ USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36
 QUERY_DELAY_SECONDS = 3
 
 
+def clean_system_name(name: str) -> str:
+    """Sanitize system name by stripping non-alphanumeric leading/trailing chars.
+
+    Handles INARA's unicode decorations (U+E81D, U+FE0E) and other edge cases.
+    """
+    import re
+    return re.sub(r'^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$', '', name)
+
+
 def find_reference_systems(conn, radius_ly: float = CANDIDACY_QUERY_RADIUS_LY) -> list[dict]:
     """Find minimum reference systems to cover all Expansion systems with rings.
 

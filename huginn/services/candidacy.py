@@ -18,6 +18,7 @@ from huginn.services.utils import (
     DB_URL,
     USER_AGENT,
     QUERY_DELAY_SECONDS,
+    clean_system_name,
     find_reference_systems,
 )
 
@@ -74,11 +75,6 @@ def _fetch_siriuscorp(system_name: str, radius_ly: float) -> str | None:
     except requests.RequestException as e:
         console.print(f"[red]Siriuscorp failed for {system_name}:[/red] {e}")
         return None
-
-
-def _clean_system_name(name: str) -> str:
-    """Sanitize system name by stripping non-alphanumeric leading/trailing chars."""
-    return re.sub(r'^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$', '', name)
 
 
 def _fetch_inara_system(url: str) -> str | None:
@@ -176,7 +172,7 @@ def _parse_inara_massacre_results(html: str) -> dict[str, dict]:
         source_links = source_cell.find_all("a", href=lambda h: h and "/starsystem/" in h)
         sources = {}
         for link in source_links:
-            src_name = _clean_system_name(link.get_text(strip=True))
+            src_name = clean_system_name(link.get_text(strip=True))
             src_href = link.get("href", "")
             if src_name and src_href:
                 # Build full URL from relative href like /elite/starsystem/1728/
@@ -186,7 +182,7 @@ def _parse_inara_massacre_results(html: str) -> dict[str, dict]:
         system_cell = cells[4]
         system_link = system_cell.find("a", href=lambda h: h and "/starsystem/" in h)
         if system_link:
-            system_name = _clean_system_name(system_link.get_text(strip=True))
+            system_name = clean_system_name(system_link.get_text(strip=True))
             if not system_name or system_name in target_systems:
                 continue
 
@@ -275,7 +271,7 @@ def _parse_siriuscorp_results(html: str) -> list[dict]:
             continue
 
         raw_name = cells[0].get_text(strip=True)
-        name = _clean_system_name(raw_name)
+        name = clean_system_name(raw_name)
         has_high = bool(cells[4].get_text(strip=True))
         has_med = bool(cells[5].get_text(strip=True))
         has_low = bool(cells[6].get_text(strip=True))

@@ -10,8 +10,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 
 from huginn.config import get_pledged_power, get_power_url
 
-DB_URL = "postgresql://huginn:huginn@localhost:5432/huginn"
-USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+from huginn.services.utils import DB_URL, USER_AGENT, clean_system_name
 
 console = Console()
 
@@ -29,12 +28,6 @@ def _fetch_page(url: str) -> str | None:
     except requests.RequestException as e:
         console.print(f"[red]Failed to fetch {url}:[/red] {e}")
         return None
-
-
-def _clean_system_name(name: str) -> str:
-    """Remove INARA's trailing unicode decorations from system names."""
-    # INARA adds U+E81D (Private Use Area) and U+FE0E (Variation Selector)
-    return name.rstrip("\ue81d\ufe0e")
 
 
 def _parse_systems_page(html: str) -> list[dict]:
@@ -64,7 +57,7 @@ def _parse_systems_page(html: str) -> list[dict]:
         if len(cells) < 3:  # Need at least name, state, updated
             continue
 
-        name = _clean_system_name(cells[0].get_text(strip=True))
+        name = clean_system_name(cells[0].get_text(strip=True))
         state = cells[1].get_text(strip=True)
 
         # Get updated timestamp from the correct column
