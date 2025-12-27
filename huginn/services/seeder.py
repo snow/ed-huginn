@@ -11,7 +11,6 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from huginn.services.utils import DB_URL, get_system_count, is_db_seeded
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
-DUMP_FILE = DATA_DIR / "galaxy_stations.json.gz"
 
 # Batch size for inserts
 BATCH_SIZE = 1000
@@ -20,6 +19,15 @@ BATCH_SIZE = 1000
 EXPECTED_SYSTEMS = 110000
 
 console = Console()
+
+
+def _find_dump_file() -> Path | None:
+    """Find the latest galaxy_*.json.gz file in the data directory."""
+    matches = list(DATA_DIR.glob("galaxy_*.json.gz"))
+    if not matches:
+        return None
+    # Return the most recently modified file
+    return max(matches, key=lambda p: p.stat().st_mtime)
 
 
 def _has_rings(system: dict) -> bool:
@@ -68,22 +76,24 @@ def _insert_batch(conn, batch: list[dict]) -> None:
 def import_from_spansh() -> bool:
     """Import/update systems from Spansh dump file.
 
+    Finds the latest galaxy_*.json.gz file in the data directory.
     Returns True if import was successful.
     """
     current_count = get_system_count()
     if current_count > 0:
         console.print(f"[dim]Current database:[/dim] {current_count:,} systems")
 
-    # Check if dump file exists
-    if not DUMP_FILE.exists():
-        console.print("[yellow]Please download galaxy_stations.json.gz from https://spansh.co.uk/dumps[/yellow]")
-        console.print(f"[dim]Save to:[/dim] {DUMP_FILE}")
+    # Find dump file
+    dump_file = _find_dump_file()
+    if not dump_file:
+        console.print("[yellow]No galaxy_*.json.gz found in data/[/yellow]")
+        console.print("[dim]Download from https://spansh.co.uk/dumps[/dim]")
         return False
 
     # Import data
     console.print()
-    console.print("[cyan]Importing systems from Spansh dump...[/cyan]")
-    console.print("[dim]This streams the 21GB file - memory usage stays low.[/dim]")
+    console.print(f"[cyan]Importing systems from {dump_file.name}...[/cyan]")
+    console.print("[dim]This streams the file - memory usage stays low.[/dim]")
     console.print()
 
     try:
@@ -101,7 +111,7 @@ def import_from_spansh() -> bool:
             ) as progress:
                 task = progress.add_task("Importing...", total=EXPECTED_SYSTEMS)
 
-                for system in _stream_systems(DUMP_FILE):
+                for system in _stream_systems(dump_file):
                     batch.append(system)
 
                     if len(batch) >= BATCH_SIZE:
