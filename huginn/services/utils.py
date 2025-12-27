@@ -1,10 +1,37 @@
 """Shared utilities for Huginn services."""
 
+import psycopg
+
 from huginn.config import CANDIDACY_QUERY_RADIUS_LY
 
 DB_URL = "postgresql://huginn:huginn@localhost:5432/huginn"
+
+
+def is_db_seeded() -> bool:
+    """Check if the database has been seeded."""
+    try:
+        with psycopg.connect(DB_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM systems")
+                count = cur.fetchone()[0]
+                return count > 0
+    except Exception:
+        return False
+
+
+def get_system_count() -> int:
+    """Get current system count in database."""
+    try:
+        with psycopg.connect(DB_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM systems")
+                return cur.fetchone()[0]
+    except Exception:
+        return 0
+
+
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-QUERY_DELAY_SECONDS = 10
+QUERY_DELAY_SECONDS = 3
 
 
 def find_reference_systems(conn, radius_ly: float = CANDIDACY_QUERY_RADIUS_LY) -> list[dict]:

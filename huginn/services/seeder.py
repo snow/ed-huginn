@@ -5,14 +5,13 @@ from pathlib import Path
 
 import ijson
 import psycopg
-import requests
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
-SPANSH_URL = "https://downloads.spansh.co.uk/galaxy_populated.json.gz"
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
-DUMP_FILE = DATA_DIR / "galaxy_populated.json.gz"
+from huginn.services.utils import DB_URL, get_system_count, is_db_seeded
 
+DATA_DIR = Path(__file__).parent.parent.parent / "data"
+DUMP_FILE = DATA_DIR / "galaxy_stations.json.gz"
 
 # Batch size for inserts
 BATCH_SIZE = 1000
@@ -20,29 +19,7 @@ BATCH_SIZE = 1000
 # Expected system count (for progress bar)
 EXPECTED_SYSTEMS = 110000
 
-# Database connection
-DB_URL = "postgresql://huginn:huginn@localhost:5432/huginn"
-
 console = Console()
-
-
-def _get_remote_size() -> int | None:
-    """Get the file size in bytes from Spansh server."""
-    try:
-        response = requests.head(SPANSH_URL, timeout=10)
-        response.raise_for_status()
-        return int(response.headers.get("content-length", 0)) or None
-    except requests.RequestException:
-        return None
-
-
-def _format_size(size_bytes: int) -> str:
-    """Format bytes as human-readable string."""
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if size_bytes < 1024:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024
-    return f"{size_bytes:.1f} PB"
 
 
 def _has_rings(system: dict) -> bool:
@@ -88,59 +65,20 @@ def _insert_batch(conn, batch: list[dict]) -> None:
         )
 
 
-def is_db_seeded() -> bool:
-    """Check if the database has been seeded."""
-    try:
-        with psycopg.connect(DB_URL) as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) FROM systems")
-                count = cur.fetchone()[0]
-                return count > 0
-    except Exception:
-        return False
+def import_from_spansh() -> bool:
+    """Import/update systems from Spansh dump file.
 
-
-def get_system_count() -> int:
-    """Get current system count in database."""
-    try:
-        with psycopg.connect(DB_URL) as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) FROM systems")
-                return cur.fetchone()[0]
-    except Exception:
-        return 0
-
-
-def seed_database() -> bool:
-    """Seed the database from Spansh dump file.
-
-    Returns True if seeding was successful or already done.
+    Returns True if import was successful.
     """
-    if is_db_seeded():
-        count = get_system_count()
-        console.print(f"[green]Database already seeded.[/green] ({count:,} systems)")
-        return True
+    current_count = get_system_count()
+    if current_count > 0:
+        console.print(f"[dim]Current database:[/dim] {current_count:,} systems")
 
     # Check if dump file exists
     if not DUMP_FILE.exists():
-        console.print("[yellow]Please download galaxy_populated.json.gz from https://spansh.co.uk/dumps[/yellow]")
+        console.print("[yellow]Please download galaxy_stations.json.gz from https://spansh.co.uk/dumps[/yellow]")
         console.print(f"[dim]Save to:[/dim] {DUMP_FILE}")
         return False
-
-    # Verify file size matches remote
-    local_size = DUMP_FILE.stat().st_size
-    remote_size = _get_remote_size()
-
-    if remote_size is None:
-        console.print("[yellow]Warning:[/yellow] Could not verify file size (server unreachable)")
-        console.print(f"[dim]Local file:[/dim] {_format_size(local_size)}")
-        console.print()
-    elif local_size != remote_size:
-        console.print(f"[red]File size mismatch![/red] Local: {_format_size(local_size)}, Remote: {_format_size(remote_size)}")
-        console.print("[dim]File may be corrupted or incomplete. Please re-download it.[/dim]")
-        return False
-    else:
-        console.print(f"[green]File verified:[/green] {_format_size(local_size)}")
 
     # Import data
     console.print()

@@ -5,6 +5,8 @@ import sys
 import questionary
 from rich.console import Console
 
+from huginn.services.utils import is_db_seeded
+
 console = Console()
 
 # Menu items: (label, command_name, command_func, enabled, visible_check)
@@ -87,40 +89,13 @@ def show_help():
     return 0
 
 
-@register_menu("Seed database", "seed")
+@register_menu("Seed database", "seed", visible=lambda: not is_db_seeded())
 def seed():
     """Seed the database with Spansh galaxy data."""
-    from huginn.services.seeder import seed_database
+    from huginn.services.seeder import import_from_spansh
 
-    success = seed_database()
+    success = import_from_spansh()
     return 0 if success else 1
-
-
-@register_menu("Set pledged power", "power")
-def set_power():
-    """Set your pledged power for filtering systems."""
-    from huginn.config import POWERS, get_pledged_power, set_pledged_power
-
-    current = get_pledged_power()
-    if current:
-        console.print(f"[dim]Currently pledged to:[/dim] [cyan]{current}[/cyan]")
-        console.print()
-
-    power_names = sorted(POWERS.keys())
-    choices = power_names + ["Cancel"]
-
-    choice = questionary.select(
-        "Select your pledged power:",
-        choices=choices,
-    ).ask()
-
-    if choice is None or choice == "Cancel":
-        console.print("[dim]Cancelled.[/dim]")
-        return 0
-
-    set_pledged_power(choice)
-    console.print(f"[green]Pledged to {choice}![/green]")
-    return 0
 
 
 def _has_pledged_power() -> bool:
@@ -258,6 +233,42 @@ def candidates():
         return 1
 
     return 0
+
+
+@register_menu("Set pledged power", "power")
+def set_power():
+    """Set your pledged power for filtering systems."""
+    from huginn.config import POWERS, get_pledged_power, set_pledged_power
+
+    current = get_pledged_power()
+    if current:
+        console.print(f"[dim]Currently pledged to:[/dim] [cyan]{current}[/cyan]")
+        console.print()
+
+    power_names = sorted(POWERS.keys())
+    choices = power_names + ["Cancel"]
+
+    choice = questionary.select(
+        "Select your pledged power:",
+        choices=choices,
+    ).ask()
+
+    if choice is None or choice == "Cancel":
+        console.print("[dim]Cancelled.[/dim]")
+        return 0
+
+    set_pledged_power(choice)
+    console.print(f"[green]Pledged to {choice}![/green]")
+    return 0
+
+
+@register_menu("Update from Spansh dump", "update", visible=is_db_seeded)
+def update_spansh():
+    """Update the database from Spansh galaxy data."""
+    from huginn.services.seeder import import_from_spansh
+
+    success = import_from_spansh()
+    return 0 if success else 1
 
 
 def main():
