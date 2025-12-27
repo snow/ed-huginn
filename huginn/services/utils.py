@@ -33,7 +33,7 @@ def get_system_count() -> int:
         return 0
 
 
-USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+USER_AGENT = "Huginn/1.0 (Elite Dangerous Personal Analysis Tool; https://github.com/snow/ed-huginn)"
 QUERY_DELAY_SECONDS = 10
 
 

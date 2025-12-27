@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-An Elite Dangerous intelligence-gathering tool for Powerplay 2.0 analysis. Currently focused on finding optimal AFK bounty hunting locations.
+An Elite Dangerous intelligence-gathering tool for personal analysis. Currently focused on finding optimal AFK bounty hunting locations.
 
 ## Usage
 
