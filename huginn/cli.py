@@ -1,5 +1,6 @@
 """Huginn CLI - Elite Dangerous intelligence gatherer."""
 
+import base64
 import sys
 from collections.abc import Callable
 
@@ -144,7 +145,6 @@ def _get_last_thursday_tick():
 @register_menu("List candidates", "candidates", visible=_has_pledged_power)
 def candidates():
     """List candidate systems for AFK bounty hunting."""
-    import subprocess
     import urllib.parse
     from datetime import timezone
 
@@ -219,17 +219,10 @@ def candidates():
 
             selected_url = url_map[choice]
 
-            # Copy INARA URL to clipboard
-            try:
-                subprocess.run(["pbcopy"], input=selected_url.encode(), check=True)
-                console.print(f"[green]Copied:[/green] {selected_url}")
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                try:
-                    subprocess.run(["xclip", "-selection", "clipboard"], input=selected_url.encode(), check=True)
-                    console.print(f"[green]Copied:[/green] {selected_url}")
-                except (subprocess.CalledProcessError, FileNotFoundError):
-                    console.print(f"[yellow]Could not copy to clipboard.[/yellow]")
-                    console.print(f"URL: {selected_url}")
+            # Copy to clipboard using OSC 52 (works over SSH/Docker with iTerm2, Kitty, etc.)
+            encoded = base64.b64encode(selected_url.encode()).decode()
+            print(f"\033]52;c;{encoded}\a", end="", flush=True)
+            console.print(f"[green]Copied:[/green] {selected_url}")
 
     except psycopg.Error as e:
         console.print(f"[red]Database error:[/red] {e}")
