@@ -1,5 +1,6 @@
 """Shared utilities for Huginn services."""
 
+import numpy as np
 import psycopg
 
 from huginn.config import CANDIDACY_QUERY_RADIUS_LY
@@ -46,10 +47,10 @@ def clean_system_name(name: str) -> str:
 def find_reference_systems(conn, radius_ly: float = CANDIDACY_QUERY_RADIUS_LY) -> list[dict]:
     """Find minimum reference systems to cover all Expansion systems with rings.
 
-    Uses greedy Set Cover algorithm:
-    1. Find the system that covers the most uncovered systems
-    2. Mark all systems within radius as covered
-    3. Repeat until all systems are covered
+    Uses greedy Set Cover algorithm with numpy for fast distance calculations:
+    1. Fetch all systems in one query
+    2. Precompute pairwise distances with numpy
+    3. Greedily select systems that cover the most uncovered systems
 
     Args:
         conn: Database connection
@@ -59,66 +60,65 @@ def find_reference_systems(conn, radius_ly: float = CANDIDACY_QUERY_RADIUS_LY) -
         List of reference systems with coverage info
     """
     with conn.cursor() as cur:
-        # Get all Expansion systems with rings (potential targets)
         cur.execute("""
             SELECT id64, name, x, y, z
             FROM systems
             WHERE power_state = 'Expansion' AND has_ring = TRUE
         """)
-        expansion_systems = {row[0]: {"name": row[1], "x": row[2], "y": row[3], "z": row[4]}
-                            for row in cur.fetchall()}
+        rows = cur.fetchall()
 
-    if not expansion_systems:
+    if not rows:
         return []
 
-    uncovered = set(expansion_systems.keys())
-    reference_systems = []
+    # Build lookup structures
+    n = len(rows)
+    ids = [row[0] for row in rows]
+    names = [row[1] for row in rows]
+    coords = np.array([[row[2], row[3], row[4]] for row in rows], dtype=np.float64)
+
+    # Precompute pairwise distances using broadcasting
+    # For n=500 systems, this is ~2MB of memory and runs in milliseconds
+    diff = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
+    distances = np.sqrt(np.sum(diff ** 2, axis=2))
+
+    # Precompute coverage masks: coverage[i] = set of indices within radius of i
+    coverage = [set(np.where(distances[i] <= radius_ly)[0]) for i in range(n)]
+
+    # Greedy set cover
+    uncovered = set(range(n))
+    reference_indices = []
 
     while uncovered:
-        best_id = None
+        best_idx = None
+        best_count = 0
         best_covers = set()
 
-        # Find the system that covers the most uncovered systems
-        for sys_id in uncovered:
-            sys = expansion_systems[sys_id]
-
-            # Find all uncovered systems within radius using SQL
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id64
-                    FROM systems
-                    WHERE power_state = 'Expansion'
-                      AND has_ring = TRUE
-                      AND id64 = ANY(%s)
-                      AND ST_3DDWithin(
-                          coords,
-                          ST_MakePoint(%s, %s, %s),
-                          %s
-                      )
-                """, (list(uncovered), sys["x"], sys["y"], sys["z"], radius_ly))
-                covers = {row[0] for row in cur.fetchall()}
-
-            if len(covers) > len(best_covers):
-                best_id = sys_id
+        for idx in uncovered:
+            # Intersect precomputed coverage with current uncovered set
+            covers = coverage[idx] & uncovered
+            if len(covers) > best_count:
+                best_idx = idx
+                best_count = len(covers)
                 best_covers = covers
 
-        if best_id is None:
+        if best_idx is None:
             break
 
-        # Add this system as a reference point
-        reference_systems.append({
-            "id64": best_id,
-            "name": expansion_systems[best_id]["name"],
-            "x": expansion_systems[best_id]["x"],
-            "y": expansion_systems[best_id]["y"],
-            "z": expansion_systems[best_id]["z"],
-            "covers": len(best_covers),
-        })
-
-        # Remove covered systems
+        reference_indices.append((best_idx, len(best_covers)))
         uncovered -= best_covers
 
-    return reference_systems
+    # Build result list
+    return [
+        {
+            "id64": ids[idx],
+            "name": names[idx],
+            "x": float(coords[idx, 0]),
+            "y": float(coords[idx, 1]),
+            "z": float(coords[idx, 2]),
+            "covers": covers_count,
+        }
+        for idx, covers_count in reference_indices
+    ]
 
 
 def mark_candidates(conn, target_systems: set[str]) -> int:

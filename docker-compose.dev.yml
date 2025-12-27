@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgis/postgis:16-3.4
+    image: postgres:16-alpine
     container_name: huginn-db
     environment:
       POSTGRES_DB: huginn

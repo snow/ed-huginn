@@ -2,15 +2,12 @@
 -- Run: psql -U huginn -d huginn -f init.sql
 -- Or: mounted as /docker-entrypoint-initdb.d/init.sql for auto-init
 
-CREATE EXTENSION IF NOT EXISTS postgis;
-
 CREATE TABLE systems (
     id64 BIGINT PRIMARY KEY,
     name TEXT NOT NULL,
     x DOUBLE PRECISION NOT NULL,
     y DOUBLE PRECISION NOT NULL,
     z DOUBLE PRECISION NOT NULL,
-    coords GEOMETRY(PointZ, 0) GENERATED ALWAYS AS (ST_MakePoint(x, y, z)) STORED,
 
     power TEXT,
     power_state TEXT,
@@ -34,9 +31,6 @@ CREATE TABLE systems (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
--- Spatial index for sphere queries (e.g., find all systems within 30ly)
-CREATE INDEX idx_systems_coords ON systems USING GIST(coords);
 
 -- Lookup by name
 CREATE INDEX idx_systems_name ON systems(name);
