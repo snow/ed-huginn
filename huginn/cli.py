@@ -93,13 +93,30 @@ def show_help():
     return 0
 
 
-@register_menu("Seed database", "seed", visible=lambda: not is_db_seeded())
+@register_menu("Seed database", "seed", visible=lambda: _has_pledged_power() and not is_db_seeded())
 def seed():
-    """Seed the database with Spansh galaxy data."""
+    """Seed database and run initial data fetch."""
     from huginn.services.seeder import import_from_spansh
+    from huginn.services.inara_power_systems import update_from_inara
+    from huginn.services.candidacy import update_candidacy
+    from huginn.services.siriuscorp import update_res_from_siriuscorp
 
-    success = import_from_spansh()
-    return 0 if success else 1
+    if not import_from_spansh():
+        return 1
+    console.print()
+
+    if not update_from_inara():
+        return 1
+    console.print()
+
+    if not update_candidacy():
+        return 1
+    console.print()
+
+    if not update_res_from_siriuscorp():
+        return 1
+
+    return 0
 
 
 def _has_pledged_power() -> bool:
