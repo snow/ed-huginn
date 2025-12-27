@@ -19,34 +19,14 @@ from huginn.services.utils import (
     USER_AGENT,
     QUERY_DELAY_SECONDS,
     clean_system_name,
+    fetch_latest_tick,
     find_reference_systems,
 )
 
 INARA_MASSACRE_URL = "https://inara.cz/elite/nearest-misc/"
 EDTOOLS_URL = "https://edtools.cc/pve"
-ELITEBGS_TICKS_URL = "https://elitebgs.app/api/ebgs/v5/ticks"
 
 console = Console()
-
-
-def _fetch_latest_tick() -> datetime | None:
-    """Fetch the latest BGS tick time from EliteBGS API."""
-    try:
-        response = requests.get(
-            ELITEBGS_TICKS_URL,
-            headers={"User-Agent": USER_AGENT},
-            timeout=10,
-        )
-        response.raise_for_status()
-        data = response.json()
-        # Response is a single object or array with one item
-        if isinstance(data, list) and data:
-            data = data[0]
-        if isinstance(data, dict) and "time" in data:
-            return datetime.fromisoformat(data["time"].replace("Z", "+00:00"))
-    except (requests.RequestException, ValueError, KeyError) as e:
-        console.print(f"[yellow]Failed to fetch BGS tick:[/yellow] {e}")
-    return None
 
 
 def _fetch_inara_massacre(system_name: str) -> str | None:
@@ -233,14 +213,16 @@ def _parse_inara_massacre_results(html: str) -> dict[str, dict]:
             tags = system_cell.find_all("span", class_="tag")
             tag_texts = [tag.get_text(strip=True).lower() for tag in tags]
 
+            has_cnb = any("cnb" in t for t in tag_texts)
+            has_haz_res = any("haz res" in t for t in tag_texts)
             has_high_res = any("high res" in t for t in tag_texts)
             has_low_res = any("low res" in t for t in tag_texts)
-            has_haz_res = any("haz res" in t for t in tag_texts)
 
             target_systems[system_name] = {
+                "has_cnb": has_cnb,
+                "has_haz_res": has_haz_res,
                 "has_high_res": has_high_res,
                 "has_low_res": has_low_res,
-                "has_haz_res": has_haz_res,
                 "sources": sources,
             }
 
@@ -360,6 +342,10 @@ def _mark_candidates_with_res(conn, target_systems: dict[str, dict]) -> int:
 
             # Only turn false to true, not the opposite. Resource info is loose—
             # we query multiple sources and store "true" if any source reports it.
+            if res_info.get("has_cnb"):
+                set_parts.append("has_cnb = TRUE")
+            if res_info.get("has_haz_res"):
+                set_parts.append("has_haz_res = TRUE")
             if res_info.get("has_high_res"):
                 set_parts.append("has_high_res = TRUE")
             if res_info.get("has_med_res"):
@@ -493,25 +479,28 @@ def update_candidacy() -> bool:
             combined_pool: dict[str, dict] = {}
             for name, res_info in inara_pool.items():
                 combined_pool[name] = {
+                    "has_cnb": res_info.get("has_cnb", False),
+                    "has_haz_res": res_info.get("has_haz_res", False),
                     "has_high_res": res_info.get("has_high_res", False),
                     "has_med_res": False,  # INARA doesn't have med
                     "has_low_res": res_info.get("has_low_res", False),
-                    "has_haz_res": res_info.get("has_haz_res", False),
                     "sources": res_info.get("sources", {}),
                 }
             for name, res_info in edtools_pool.items():
                 if name in combined_pool:
+                    combined_pool[name]["has_cnb"] |= res_info.get("has_cnb", False)
+                    combined_pool[name]["has_haz_res"] |= res_info.get("has_haz_res", False)
                     combined_pool[name]["has_high_res"] |= res_info.get("has_high_res", False)
                     combined_pool[name]["has_med_res"] |= res_info.get("has_med_res", False)
                     combined_pool[name]["has_low_res"] |= res_info.get("has_low_res", False)
-                    combined_pool[name]["has_haz_res"] |= res_info.get("has_haz_res", False)
                 else:
                     # EDTools doesn't have source info
                     combined_pool[name] = {
+                        "has_cnb": res_info.get("has_cnb", False),
+                        "has_haz_res": res_info.get("has_haz_res", False),
                         "has_high_res": res_info.get("has_high_res", False),
                         "has_med_res": res_info.get("has_med_res", False),
                         "has_low_res": res_info.get("has_low_res", False),
-                        "has_haz_res": res_info.get("has_haz_res", False),
                         "sources": {},
                     }
 
@@ -524,7 +513,7 @@ def update_candidacy() -> bool:
             console.print("[cyan]Step 6:[/cyan] Counting peaceful factions in source systems...")
 
             # Fetch latest BGS tick to check data freshness
-            latest_tick = _fetch_latest_tick()
+            latest_tick = fetch_latest_tick()
             if latest_tick:
                 console.print(f"  [dim]Latest BGS tick: {latest_tick.strftime('%Y-%m-%d %H:%M')} UTC[/dim]")
             else:

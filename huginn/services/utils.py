@@ -1,13 +1,49 @@
 """Shared utilities for Huginn services."""
 
 import os
+from datetime import datetime
 
 import numpy as np
 import psycopg
+import requests
+from rich.console import Console
 
 from huginn.config import CANDIDACY_QUERY_RADIUS_LY
 
 DB_URL = os.environ.get("DATABASE_URL", "postgresql://huginn:huginn@localhost:5432/huginn")
+USER_AGENT = "Huginn/1.0 (Elite Dangerous Personal Analysis Tool; https://github.com/snow/ed-huginn)"
+QUERY_DELAY_SECONDS = 10
+
+ELITEBGS_TICKS_URL = "https://elitebgs.app/api/ebgs/v5/ticks"
+
+_console = Console()
+
+
+def fetch_latest_tick() -> datetime | None:
+    """Fetch the latest BGS tick time from EliteBGS API.
+
+    BGS (Background Simulation) ticks happen daily and update all in-game data.
+    Data fetched before the last tick is considered stale.
+
+    Returns:
+        datetime of the latest tick, or None if fetch failed.
+    """
+    try:
+        response = requests.get(
+            ELITEBGS_TICKS_URL,
+            headers={"User-Agent": USER_AGENT},
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+        # Response is a single object or array with one item
+        if isinstance(data, list) and data:
+            data = data[0]
+        if isinstance(data, dict) and "time" in data:
+            return datetime.fromisoformat(data["time"].replace("Z", "+00:00"))
+    except (requests.RequestException, ValueError, KeyError) as e:
+        _console.print(f"[yellow]Failed to fetch BGS tick:[/yellow] {e}")
+    return None
 
 
 def is_db_seeded() -> bool:
@@ -31,10 +67,6 @@ def get_system_count() -> int:
                 return cur.fetchone()[0]
     except Exception:
         return 0
-
-
-USER_AGENT = "Huginn/1.0 (Elite Dangerous Personal Analysis Tool; https://github.com/snow/ed-huginn)"
-QUERY_DELAY_SECONDS = 10
 
 
 def clean_system_name(name: str) -> str:

@@ -156,7 +156,8 @@ def candidates():
         with psycopg.connect(DB_URL) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT name, power_state, has_high_res, has_med_res, has_low_res,
+                    SELECT name, power_state,
+                           has_cnb, has_haz_res, has_high_res, has_med_res, has_low_res,
                            updated_at, metadata
                     FROM systems
                     WHERE is_candidate = TRUE
@@ -174,12 +175,18 @@ def candidates():
         # Build menu entries and URL mapping
         choices = []
         url_map = {}
-        for name, power_state, has_high, has_med, has_low, updated_at, metadata in rows:
+        for name, power_state, has_cnb, has_haz, has_high, has_med, has_low, updated_at, metadata in rows:
             encoded_name = urllib.parse.quote(name)
             inara_url = f"https://inara.cz/elite/nearest-misc/?ps1={encoded_name}&pi20=9"
 
-            # RES info: HML, -M-, --L, ---
-            res_str = f"{'H' if has_high else '-'}{'M' if has_med else '-'}{'L' if has_low else '-'}"
+            # RES info: CHHML (CNB, Haz, High, Med, Low)
+            res_str = (
+                f"{'C' if has_cnb else '-'}"
+                f"{'H' if has_haz else '-'}"
+                f"{'H' if has_high else '-'}"
+                f"{'M' if has_med else '-'}"
+                f"{'L' if has_low else '-'}"
+            )
 
             # Source factions string (e.g., "5+4+3=12")
             factions_str = ""
