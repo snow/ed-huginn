@@ -19,7 +19,14 @@ def run_update_subprocess() -> bool:
     """Spawn subprocess to run incremental-update command.
 
     Returns True if subprocess succeeded.
+    Skips if enable_periodical_update is not explicitly true in config.
     """
+    from huginn.config import load_config
+
+    config = load_config()
+    if not config.get("enable_periodical_update", False):
+        return True  # Skip silently, not an error
+
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     console.print(f"[cyan][{timestamp}][/cyan] Starting incremental update...")
 
