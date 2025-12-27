@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: huginn-db
+    environment:
+      POSTGRES_DB: huginn
+      POSTGRES_USER: huginn
+      POSTGRES_PASSWORD: huginn
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U huginn -d huginn"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  scheduler:
+    build: .
+    container_name: huginn-scheduler
+    environment:
+      DATABASE_URL: postgresql://huginn:huginn@db:5432/huginn
+    volumes:
+      - ./data:/app/data  # For Spansh dump (seeding) and config.json
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

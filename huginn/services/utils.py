@@ -1,11 +1,13 @@
 """Shared utilities for Huginn services."""
 
+import os
+
 import numpy as np
 import psycopg
 
 from huginn.config import CANDIDACY_QUERY_RADIUS_LY
 
-DB_URL = "postgresql://huginn:huginn@localhost:5432/huginn"
+DB_URL = os.environ.get("DATABASE_URL", "postgresql://huginn:huginn@localhost:5432/huginn")
 
 
 def is_db_seeded() -> bool:
@@ -32,7 +34,7 @@ def get_system_count() -> int:
 
 
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-QUERY_DELAY_SECONDS = 3
+QUERY_DELAY_SECONDS = 10
 
 
 def clean_system_name(name: str) -> str:

@@ -83,7 +83,10 @@ def show_help():
     console.print("Commands:")
     for label, command, _, enabled, _ in MENU_ITEMS:
         status = "" if enabled else " [dim](WIP)[/dim]"
-        console.print(f"  {command:12} {label}{status}")
+        console.print(f"  {command:20} {label}{status}")
+    console.print()
+    console.print("Daemon:")
+    console.print(f"  {'scheduler [hours]':20} Run periodic updates (default: 1 hour)")
     console.print()
     console.print("Run without arguments for interactive menu.")
     return 0
@@ -298,6 +301,24 @@ def update_spansh():
     return 0 if success else 1
 
 
+def run_scheduler():
+    """Start the scheduler for periodic updates."""
+    from huginn.scheduler import start_scheduler
+
+    # Parse optional interval from args: scheduler [hours]
+    interval = 1.0
+    if len(sys.argv) > 2:
+        try:
+            interval = float(sys.argv[2])
+        except ValueError:
+            console.print(f"[red]Invalid interval:[/red] {sys.argv[2]}")
+            console.print("Usage: python -m huginn scheduler [hours]")
+            return 1
+
+    start_scheduler(interval_hours=interval)
+    return 0
+
+
 def main():
     """Main entry point."""
     if len(sys.argv) < 2:
@@ -307,6 +328,10 @@ def main():
 
     if cmd in ("--help", "-h", "help"):
         sys.exit(show_help())
+
+    # Special commands not in menu
+    if cmd == "scheduler":
+        sys.exit(run_scheduler())
 
     # Build command lookup
     commands = {command: (func, enabled) for _, command, func, enabled, _ in MENU_ITEMS}

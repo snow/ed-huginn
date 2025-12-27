@@ -66,7 +66,7 @@ def save_config(config: dict) -> None:
 
 
 def get_pledged_power() -> str | None:
-    """Get the user's pledged power."""
+    """Get the user's pledged power from config file."""
     config = load_config()
     return config.get("pledged_power")
 
