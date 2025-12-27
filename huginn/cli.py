@@ -104,42 +104,6 @@ def _has_pledged_power() -> bool:
     return get_pledged_power() is not None
 
 
-@register_menu("Fetch power systems from INARA", "inara", visible=_has_pledged_power)
-def update_inara():
-    """Fetch contested systems from INARA and update database."""
-    from huginn.services.inara_power_systems import update_from_inara
-
-    success = update_from_inara()
-    return 0 if success else 1
-
-
-@register_menu("Update power history from INARA", "history", visible=_has_pledged_power)
-def check_history():
-    """Check power history for systems that changed state."""
-    from huginn.services.inara_power_history import update_from_history
-
-    success = update_from_history()
-    return 0 if success else 1
-
-
-@register_menu("Update candidates", "check", visible=_has_pledged_power)
-def update_candidates():
-    """Run consolidated candidacy check (INARA massacre + EDTools)."""
-    from huginn.services.candidacy import update_candidacy
-
-    success = update_candidacy()
-    return 0 if success else 1
-
-
-@register_menu("Update candidate RES from Siriuscorp", "siriuscorp", visible=_has_pledged_power)
-def update_siriuscorp():
-    """Query Siriuscorp for RES data on candidate systems."""
-    from huginn.services.siriuscorp import update_res_from_siriuscorp
-
-    success = update_res_from_siriuscorp()
-    return 0 if success else 1
-
-
 def _get_last_thursday_tick():
     """Get the datetime of the last Thursday tick (07:00 UTC)."""
     from datetime import datetime, timedelta, timezone
@@ -251,6 +215,51 @@ def candidates():
         return 1
 
     return 0
+
+
+@register_menu("General incremental update", "incremental-update", visible=_has_pledged_power)
+def incremental_update():
+    """Run power history + candidacy + Siriuscorp updates in sequence."""
+    from huginn.services.incremental_update import run_incremental_update
+
+    success = run_incremental_update()
+    return 0 if success else 1
+
+
+@register_menu("Update power history from INARA", "history", visible=_has_pledged_power)
+def check_history():
+    """Check power history for systems that changed state."""
+    from huginn.services.inara_power_history import update_from_history
+
+    success = update_from_history()
+    return 0 if success else 1
+
+
+@register_menu("Recalculate candidates", "check", visible=_has_pledged_power)
+def update_candidates():
+    """Run consolidated candidacy check (INARA massacre + EDTools)."""
+    from huginn.services.candidacy import update_candidacy
+
+    success = update_candidacy()
+    return 0 if success else 1
+
+
+@register_menu("Update candidate RES from Siriuscorp", "siriuscorp", visible=_has_pledged_power)
+def update_siriuscorp():
+    """Query Siriuscorp for RES data on candidate systems."""
+    from huginn.services.siriuscorp import update_res_from_siriuscorp
+
+    success = update_res_from_siriuscorp()
+    return 0 if success else 1
+
+
+@register_menu("Fetch power systems from INARA", "inara", visible=_has_pledged_power)
+def update_inara():
+    """Fetch contested systems from INARA and update database."""
+    from huginn.services.inara_power_systems import update_from_inara
+
+    success = update_from_inara()
+    return 0 if success else 1
 
 
 @register_menu("Set pledged power", "power")
