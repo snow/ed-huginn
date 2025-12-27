@@ -33,7 +33,7 @@ def _fetch_page(url: str) -> str | None:
 def _parse_systems_page(html: str) -> list[dict]:
     """Parse a systems table from INARA HTML (works for contested/controlled).
 
-    Returns list of dicts with: name, state, inara_updated_at (as datetime)
+    Returns list of dicts with: name, state, inara_info_updated_at (as datetime)
     """
     soup = BeautifulSoup(html, "html.parser")
     table = soup.find("table")
@@ -68,7 +68,7 @@ def _parse_systems_page(html: str) -> list[dict]:
             continue
 
         try:
-            inara_updated_at = datetime.fromtimestamp(
+            inara_info_updated_at = datetime.fromtimestamp(
                 int(updated_ts), tz=timezone.utc
             )
         except (ValueError, TypeError):
@@ -77,7 +77,7 @@ def _parse_systems_page(html: str) -> list[dict]:
         systems.append({
             "name": name,
             "state": state,
-            "inara_updated_at": inara_updated_at,
+            "inara_info_updated_at": inara_info_updated_at,
         })
 
     return systems
@@ -122,7 +122,7 @@ def _update_systems(
             # Find system in DB by name
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id64, inara_updated_at FROM systems WHERE name = %s",
+                    "SELECT id64, inara_info_updated_at FROM systems WHERE name = %s",
                     (system["name"],),
                 )
                 row = cur.fetchone()
@@ -139,7 +139,7 @@ def _update_systems(
                 # Make db timestamp timezone-aware for comparison
                 if db_inara_updated.tzinfo is None:
                     db_inara_updated = db_inara_updated.replace(tzinfo=timezone.utc)
-                if system["inara_updated_at"] <= db_inara_updated:
+                if system["inara_info_updated_at"] <= db_inara_updated:
                     skipped += 1
                     progress.update(task, advance=1)
                     continue
@@ -159,11 +159,11 @@ def _update_systems(
                     UPDATE systems
                     SET power = %s,
                         power_state = %s,
-                        inara_updated_at = %s{is_candidate_sql},
+                        inara_info_updated_at = %s{is_candidate_sql},
                         updated_at = NOW()
                     WHERE id64 = %s
                     """,
-                    (power, system["state"], system["inara_updated_at"], db_id64),
+                    (power, system["state"], system["inara_info_updated_at"], db_id64),
                 )
             updated += 1
             progress.update(task, advance=1)

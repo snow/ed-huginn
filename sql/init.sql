@@ -24,7 +24,7 @@ CREATE TABLE systems (
     has_low_res BOOLEAN DEFAULT FALSE,
 
     spansh_updated_at TIMESTAMPTZ,
-    inara_updated_at TIMESTAMPTZ,
+    inara_info_updated_at TIMESTAMPTZ,
     candidacy_checked_at TIMESTAMPTZ,
 
     metadata JSONB DEFAULT '{}'::JSONB,

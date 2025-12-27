@@ -172,10 +172,10 @@ def candidates():
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT name, power_state, has_high_res, has_med_res, has_low_res,
-                           inara_updated_at, metadata
+                           updated_at, metadata
                     FROM systems
                     WHERE is_candidate = TRUE
-                    ORDER BY inara_updated_at DESC NULLS LAST
+                    ORDER BY updated_at DESC NULLS LAST
                 """)
                 rows = cur.fetchall()
 
@@ -189,7 +189,7 @@ def candidates():
         # Build menu entries and URL mapping
         choices = []
         url_map = {}
-        for name, power_state, has_high, has_med, has_low, inara_updated_at, metadata in rows:
+        for name, power_state, has_high, has_med, has_low, updated_at, metadata in rows:
             encoded_name = urllib.parse.quote(name)
             inara_url = f"https://inara.cz/elite/nearest-misc/?ps1={encoded_name}&pi20=9"
 
@@ -203,9 +203,9 @@ def candidates():
             factions_display = f" [{factions_str}]" if factions_str else ""
 
             # Format timestamp as "Dec 27 01:28"
-            if inara_updated_at:
-                ts_str = inara_updated_at.strftime("%b %d %H:%M")
-                ts_aware = inara_updated_at.replace(tzinfo=timezone.utc) if inara_updated_at.tzinfo is None else inara_updated_at
+            if updated_at:
+                ts_str = updated_at.strftime("%b %d %H:%M")
+                ts_aware = updated_at.replace(tzinfo=timezone.utc) if updated_at.tzinfo is None else updated_at
                 is_stale = ts_aware < last_tick
             else:
                 ts_str = "N/A"

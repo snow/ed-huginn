@@ -13,6 +13,7 @@ build/
 # Data files (large dumps)
 data/*.gz
 data/*.json
+data/*.example.html
 
 # Environment
 .env

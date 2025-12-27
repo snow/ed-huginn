@@ -146,7 +146,7 @@ def update_from_history() -> bool:
             for t in transitions:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT id64, inara_updated_at FROM systems WHERE name = %s",
+                        "SELECT id64, inara_info_updated_at FROM systems WHERE name = %s",
                         (t["name"],),
                     )
                     row = cur.fetchone()
@@ -171,7 +171,7 @@ def update_from_history() -> bool:
                         UPDATE systems
                         SET power = %s,
                             power_state = %s,
-                            inara_updated_at = %s,
+                            inara_info_updated_at = %s,
                             updated_at = NOW()
                         WHERE id64 = %s
                         """,
