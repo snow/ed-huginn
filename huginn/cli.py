@@ -1,6 +1,7 @@
 """Huginn CLI - Elite Dangerous intelligence gatherer."""
 
 import sys
+from collections.abc import Callable
 
 import questionary
 from rich.console import Console
@@ -11,10 +12,10 @@ console = Console()
 
 # Menu items: (label, command_name, command_func, enabled, visible_check)
 # visible_check is optional callable that returns True if item should be shown
-MENU_ITEMS: list[tuple[str, str, callable, bool, callable | None]] = []
+MENU_ITEMS: list[tuple[str, str, Callable, bool, Callable | None]] = []
 
 
-def register_menu(label: str, command: str, enabled: bool = True, visible: callable = None):
+def register_menu(label: str, command: str, enabled: bool = True, visible: Callable = None):
     """Decorator to register a command in the interactive menu.
 
     Args:
