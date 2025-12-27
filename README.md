@@ -43,6 +43,11 @@ The scheduler runs `incremental-update` hourly as a subprocess.
 docker logs -f huginn-scheduler
 ```
 
+## TODO
+
+- There are missing systems in galaxy_stations.json.gz and galaxy_populated.json.gz
+- Probably drop edtools.cc support
+
 ## License
 
 MIT
