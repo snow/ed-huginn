@@ -16,9 +16,19 @@ def run_incremental_update() -> bool:
     Returns:
         True if all steps succeeded, False if any step failed.
     """
+    from huginn.config import get_pledged_power
     from huginn.services.candidacy import update_candidacy
     from huginn.services.inara_power_history import update_from_history
     from huginn.services.siriuscorp import update_res_from_siriuscorp
+    from huginn.services.utils import is_db_seeded
+
+    if not is_db_seeded():
+        console.print("[red]Database not seeded. Run 'seed' first.[/red]")
+        return False
+
+    if not get_pledged_power():
+        console.print("[red]No pledged power set. Run 'power' first.[/red]")
+        return False
 
     console.print("[bold cyan]Starting general incremental update...[/bold cyan]")
     console.print()
