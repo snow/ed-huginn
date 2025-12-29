@@ -52,7 +52,7 @@ def run_update_subprocess() -> bool:
         return False
 
 
-def start_scheduler(interval_hours: float = 1.0, run_immediately: bool = True):
+def start_scheduler(interval_hours: float = 3.0, run_immediately: bool = True):
     """Start the scheduler loop.
 
     Args:
