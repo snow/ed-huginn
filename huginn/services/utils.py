@@ -14,13 +14,13 @@ DB_URL = os.environ.get("DATABASE_URL", "postgresql://huginn:huginn@localhost:54
 USER_AGENT = "Huginn/1.0 (Elite Dangerous Personal Analysis Tool; https://github.com/snow/ed-huginn)"
 QUERY_DELAY_SECONDS = 10
 
-ELITEBGS_TICKS_URL = "https://elitebgs.app/api/ebgs/v5/ticks"
+EDCD_TICK_URL = "https://tick.edcd.io/api/tick"
 
 _console = Console()
 
 
 def fetch_latest_tick() -> datetime | None:
-    """Fetch the latest BGS tick time from EliteBGS API.
+    """Fetch the latest BGS tick time from EDCD Tick Detector.
 
     BGS (Background Simulation) ticks happen daily and update all in-game data.
     Data fetched before the last tick is considered stale.
@@ -30,18 +30,16 @@ def fetch_latest_tick() -> datetime | None:
     """
     try:
         response = requests.get(
-            ELITEBGS_TICKS_URL,
+            EDCD_TICK_URL,
             headers={"User-Agent": USER_AGENT},
             timeout=10,
         )
         response.raise_for_status()
-        data = response.json()
-        # Response is a single object or array with one item
-        if isinstance(data, list) and data:
-            data = data[0]
-        if isinstance(data, dict) and "time" in data:
-            return datetime.fromisoformat(data["time"].replace("Z", "+00:00"))
-    except (requests.RequestException, ValueError, KeyError) as e:
+        # Response is a simple ISO timestamp string: "2025-12-29T10:42:20+00:00"
+        timestamp = response.json()
+        if isinstance(timestamp, str):
+            return datetime.fromisoformat(timestamp)
+    except (requests.RequestException, ValueError) as e:
         _console.print(f"[yellow]Failed to fetch BGS tick:[/yellow] {e}")
     return None
 
