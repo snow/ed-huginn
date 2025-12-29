@@ -586,9 +586,8 @@ def update_candidacy() -> bool:
 
                         faction_counts.append(_count_peaceful_factions(faction_info["factions"]))
 
-                    # Build faction string: "5+4+3+2=14" (sorted descending)
+                    # Build faction string: "5+0+2+4=11" (original order, zeros included)
                     if faction_counts:
-                        faction_counts.sort(reverse=True)
                         total = sum(faction_counts)
                         faction_str = "+".join(str(c) for c in faction_counts) + f"={total}"
 
